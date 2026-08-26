@@ -8,8 +8,6 @@
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
     <!-- QRCode.js -->
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
-    <!-- アイコン -->
-    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
     <style>
         :root {
             --bg-color: #f2f2f7;
@@ -74,7 +72,7 @@
             border: none;
             color: var(--accent-blue);
             font-size: 16px;
-            font-weight: 500;
+            font-weight: 600;
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -87,7 +85,7 @@
         .header-btn.icon-only { font-size: 24px; font-weight: 300; }
 
         .page-title {
-            font-size: 30px;
+            font-size: 28px;
             font-weight: 800;
             letter-spacing: -0.5px;
             color: #000;
@@ -113,18 +111,18 @@
 
         .group-card-wrapper {
             position: relative;
-            margin-bottom: 22px;
+            margin-bottom: 18px;
             cursor: grab;
             user-select: none;
             -webkit-user-select: none;
             touch-action: pan-y;
-            transition: transform 0.2s, opacity 0.2s;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
         }
 
         .group-card-wrapper.dragging, .barcode-card.dragging {
-            opacity: 0.5;
-            transform: scale(0.96);
-            box-shadow: 0 12px 28px rgba(0,0,0,0.15);
+            opacity: 0.85;
+            z-index: 999 !important;
+            box-shadow: 0 16px 32px rgba(0,0,0,0.2) !important;
         }
 
         .group-card-stack {
@@ -143,22 +141,20 @@
             padding: 22px 20px;
             position: relative;
             cursor: pointer;
-            transition: transform 0.2s cubic-bezier(0.25, 1, 0.5, 1);
             box-shadow: var(--card-shadow);
             border: 1px solid rgba(255,255,255,0.8);
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            min-height: 130px;
+            min-height: 120px;
             overflow: hidden;
             z-index: 1;
         }
 
-        .group-card:active { transform: scale(0.98); }
-
         .group-card-header {
             display: flex;
             align-items: flex-start;
+            justify-content: space-between;
         }
 
         .group-title {
@@ -171,40 +167,42 @@
         .group-subtitle {
             font-size: 13px;
             color: rgba(0, 0, 0, 0.55);
-            font-weight: 500;
+            font-weight: 600;
         }
 
+        /* 右側の大きいアイコンのみ表示 */
         .group-illustration {
             position: absolute;
-            right: 14px;
+            right: 16px;
             bottom: 10px;
-            font-size: 64px;
+            font-size: 58px;
             opacity: 0.85;
             user-select: none;
             pointer-events: none;
         }
 
-        .group-edit-actions {
+        .card-edit-actions {
             position: absolute;
-            top: 14px;
-            right: 14px;
+            top: 12px;
+            right: 12px;
             display: flex;
             gap: 6px;
             z-index: 10;
         }
 
         .edit-badge-btn {
-            background: rgba(255, 255, 255, 0.9);
-            border: none;
-            border-radius: 20px;
-            padding: 6px 12px;
+            background: rgba(255, 255, 255, 0.92);
+            border: 1px solid rgba(0,0,0,0.08);
+            border-radius: 16px;
+            padding: 5px 10px;
             font-size: 12px;
             font-weight: 700;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
             cursor: pointer;
         }
         .edit-badge-btn.delete { color: var(--accent-red); }
         .edit-badge-btn.edit { color: var(--accent-blue); }
+        .edit-badge-btn.move { color: #333; padding: 5px 8px; }
 
         .barcode-card {
             background: #ffffff;
@@ -214,10 +212,11 @@
             box-shadow: var(--card-shadow);
             border: 1px solid rgba(0, 0, 0, 0.03);
             cursor: grab;
+            position: relative;
             user-select: none;
             -webkit-user-select: none;
             touch-action: pan-y;
-            transition: transform 0.2s, opacity 0.2s;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
         }
 
         .barcode-header {
@@ -437,9 +436,7 @@
         }
 
         .preview-avatar img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
+            width: 100%; height: 100%; object-fit: cover;
         }
 
         .color-picker-grid { display: flex; gap: 12px; margin-top: 6px; }
@@ -496,7 +493,7 @@
         <input type="text" id="groupNameInput" class="form-input" placeholder="例: スーパー・ドラッグストア">
     </div>
     <div class="form-group">
-        <label class="form-label">アイコン（絵文字）</label>
+        <label class="form-label">グループアイコン（右側の絵文字）</label>
         <input type="text" id="groupIconInput" class="form-input" value="🛒" maxlength="2">
     </div>
     <div class="form-group">
@@ -562,14 +559,14 @@
 <script>
     const initialData = [
         {
-            id: "group-1", title: "食品・スーパー", icon: "🍞", color: "#FFF7ED", illustration: "🧺",
+            id: "group-1", title: "食品・スーパー", icon: "🧺", color: "#FFF7ED",
             items: [
                 { id: "item-101", name: "ポンタカード (サンプル)", type: "CODE128", code: "102030405060", active: false, iconImage: "" },
                 { id: "item-102", name: "イオンオーナーズ", type: "CODE128", code: "991234567890", active: false, iconImage: "" }
             ]
         },
         {
-            id: "group-2", title: "雑貨・ドラッグストア", icon: "🛍️", color: "#F0FDF4", illustration: "🧴",
+            id: "group-2", title: "雑貨・ドラッグストア", icon: "🧴", color: "#F0FDF4",
             items: [
                 { id: "item-201", name: "マツモトキヨシ", type: "EAN13", code: "4901234567890", active: false, iconImage: "" },
                 { id: "item-202", name: "T-ポイント (サンプル)", type: "CODE128", code: "2912345678901", active: false, iconImage: "" }
@@ -582,15 +579,6 @@
     let selectedColor = "#FFF7ED";
     let isEditMode = false;
     let currentUploadedImageBase64 = "";
-
-    // ドラッグ＆ドロップ関連変数
-    let dragSrcIndex = null;
-    let touchTimer = null;
-    let touchDraggedEl = null;
-    let touchDragType = null;
-    let initialTouchY = 0;
-    let dragStartIndex = -1;
-    let currentHoverIndex = -1;
 
     function loadData() {
         const local = localStorage.getItem('static_barcode_app_data');
@@ -628,13 +616,16 @@
             let editBtnsHTML = '';
             if (isEditMode) {
                 editBtnsHTML = `
-                    <div class="group-edit-actions">
+                    <div class="card-edit-actions">
+                        <button class="edit-badge-btn move" onclick="event.stopPropagation(); moveItem('group', ${index}, -1)">▲</button>
+                        <button class="edit-badge-btn move" onclick="event.stopPropagation(); moveItem('group', ${index}, 1)">▼</button>
                         <button class="edit-badge-btn edit" onclick="event.stopPropagation(); openEditGroupModal('${group.id}')">編集</button>
                         <button class="edit-badge-btn delete" onclick="event.stopPropagation(); deleteGroup('${group.id}')">削除</button>
                     </div>
                 `;
             }
 
+            // 左側アイコンを排除し、右側の大きいアイコンのみ配置
             wrapper.innerHTML = `
                 <div class="group-card-stack"></div>
                 <div class="group-card" style="background-color: ${group.color};" onclick="handleGroupClick('${group.id}')">
@@ -645,7 +636,7 @@
                             <div class="group-subtitle">${count}枚登録</div>
                         </div>
                     </div>
-                    <div class="group-illustration">${group.illustration || group.icon}</div>
+                    <div class="group-illustration">${group.icon || '📁'}</div>
                 </div>
             `;
             container.appendChild(wrapper);
@@ -692,9 +683,20 @@
             const displayBoxId = `display-box-${item.id}`;
             const avatarHTML = item.iconImage 
                 ? `<img src="${item.iconImage}" alt="icon">` 
-                : group.icon;
+                : (group.icon || '💳');
+
+            let editBtnsHTML = '';
+            if (isEditMode) {
+                editBtnsHTML = `
+                    <div class="card-edit-actions" style="top:10px; right:10px;">
+                        <button class="edit-badge-btn move" onclick="event.stopPropagation(); moveItem('barcode', ${index}, -1)">▲</button>
+                        <button class="edit-badge-btn move" onclick="event.stopPropagation(); moveItem('barcode', ${index}, 1)">▼</button>
+                    </div>
+                `;
+            }
 
             card.innerHTML = `
+                ${editBtnsHTML}
                 <div class="barcode-header">
                     <div class="barcode-title-area">
                         <div class="barcode-avatar">${avatarHTML}</div>
@@ -703,7 +705,7 @@
                             <div class="barcode-type-tag">${item.type}</div>
                         </div>
                     </div>
-                    <label class="switch" title="ぼかし非表示の切り替え">
+                    <label class="switch" title="ぼかし非表示の切り替え" onclick="event.stopPropagation();">
                         <input type="checkbox" ${item.active ? 'checked' : ''} onchange="toggleMask('${item.id}', this.checked)">
                         <span class="slider"></span>
                     </label>
@@ -747,83 +749,103 @@
         } catch(e) { console.error(e); }
     }
 
-    /* PCマウスドラッグ＆スマホ長押しドラッグ対応 */
+    /* -------------------------------------------------------------
+       強化版ドラッグ＆ドロップ（長押し追従＋ポインター透過処理）
+    ------------------------------------------------------------- */
+    let touchTimer = null;
+    let isTouchDragging = false;
+    let activeDragEl = null;
+    let activeDragType = null;
+    let dragStartIndex = -1;
+    let currentHoverIndex = -1;
+    let touchStartY = 0;
+
     function setupDragAndDropEvents(el, type) {
-        // === PC用 HTML5 Drag & Drop ===
+        // --- PC マウスドラッグ ---
         el.addEventListener('dragstart', (e) => {
-            dragSrcIndex = parseInt(el.dataset.index);
+            dragStartIndex = parseInt(el.dataset.index);
+            activeDragType = type;
             el.classList.add('dragging');
             e.dataTransfer.effectAllowed = 'move';
         });
 
-        el.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-        });
-
-        el.addEventListener('dragend', () => {
-            el.classList.remove('dragging');
-        });
+        el.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+        el.addEventListener('dragend', () => el.classList.remove('dragging'));
 
         el.addEventListener('drop', (e) => {
             e.preventDefault();
             const targetIndex = parseInt(el.dataset.index);
-            if (dragSrcIndex === null || dragSrcIndex === targetIndex) return;
-            reorderItems(type, dragSrcIndex, targetIndex);
+            if (dragStartIndex !== -1 && dragStartIndex !== targetIndex && activeDragType === type) {
+                reorderItems(type, dragStartIndex, targetIndex);
+            }
         });
 
-        // === スマホ / タッチ長押しによる並び替え ===
+        // --- スマホ 長押しタッチドラッグ ---
         el.addEventListener('touchstart', (e) => {
-            // ボタンやスイッチの操作時は並び替えを発動させない
-            if (e.target.closest('.group-edit-actions') || e.target.closest('.switch') || e.target.closest('.action-btn-subtle') || e.target.closest('input') || e.target.closest('button')) {
+            if (e.target.closest('.card-edit-actions') || e.target.closest('.switch') || e.target.closest('.action-btn-subtle') || e.target.closest('input') || e.target.closest('button')) {
                 return;
             }
 
             const touch = e.touches[0];
-            initialTouchY = touch.clientY;
-            const index = parseInt(el.dataset.index);
+            touchStartY = touch.clientY;
+            dragStartIndex = parseInt(el.dataset.index);
+            currentHoverIndex = dragStartIndex;
 
             touchTimer = setTimeout(() => {
-                touchDraggedEl = el;
-                touchDragType = type;
-                dragStartIndex = index;
-                currentHoverIndex = index;
+                isTouchDragging = true;
+                activeDragEl = el;
+                activeDragType = type;
 
-                if (navigator.vibrate) navigator.vibrate(50);
+                if (navigator.vibrate) navigator.vibrate(40);
+
                 el.classList.add('dragging');
-            }, 400); // 400ms の長押しでドラッグ開始
+                // ドラッグ中要素を透過させ、指の下にある他の要素を取得可能にする
+                el.style.pointerEvents = 'none';
+            }, 350); // 350msの長押しで発動
         }, { passive: true });
 
         el.addEventListener('touchmove', (e) => {
-            if (!touchDraggedEl) {
-                const touch = e.touches[0];
-                if (Math.abs(touch.clientY - initialTouchY) > 10) {
-                    clearTimeout(touchTimer); // スクロール時は長押しをキャンセル
+            const touch = e.touches[0];
+
+            if (!isTouchDragging) {
+                if (Math.abs(touch.clientY - touchStartY) > 12) {
+                    clearTimeout(touchTimer); // 指が動いたら長押し解除
                 }
                 return;
             }
 
-            e.preventDefault(); // ドラッグ中は画面スクロールを停止
+            if (e.cancelable) e.preventDefault();
 
-            const touch = e.touches[0];
+            // カードを指のY位置に追従させる
+            const deltaY = touch.clientY - touchStartY;
+            if (activeDragEl) {
+                activeDragEl.style.transform = `translateY(${deltaY}px) scale(1.02)`;
+            }
+
+            // 指の下にあるカードのインデックスを取得
             const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
-            if (!targetEl) return;
-
-            const cardWrapper = targetEl.closest(type === 'group' ? '.group-card-wrapper' : '.barcode-card');
-            if (cardWrapper && cardWrapper.dataset.index !== undefined) {
-                currentHoverIndex = parseInt(cardWrapper.dataset.index);
+            if (targetEl) {
+                const cardWrapper = targetEl.closest(type === 'group' ? '.group-card-wrapper' : '.barcode-card');
+                if (cardWrapper && cardWrapper.dataset.index !== undefined) {
+                    currentHoverIndex = parseInt(cardWrapper.dataset.index);
+                }
             }
         }, { passive: false });
 
         const handleTouchEnd = () => {
             clearTimeout(touchTimer);
-            if (touchDraggedEl) {
-                touchDraggedEl.classList.remove('dragging');
+            if (isTouchDragging && activeDragEl) {
+                activeDragEl.classList.remove('dragging');
+                activeDragEl.style.transform = '';
+                activeDragEl.style.pointerEvents = '';
+
                 if (dragStartIndex !== -1 && currentHoverIndex !== -1 && dragStartIndex !== currentHoverIndex) {
-                    reorderItems(touchDragType, dragStartIndex, currentHoverIndex);
+                    reorderItems(activeDragType, dragStartIndex, currentHoverIndex);
                 }
-                touchDraggedEl = null;
-                touchDragType = null;
+
+                isTouchDragging = false;
+                activeDragEl = null;
+                activeDragType = null;
                 dragStartIndex = -1;
                 currentHoverIndex = -1;
             }
@@ -847,6 +869,18 @@
                 saveData();
                 renderBarcodesView();
             }
+        }
+    }
+
+    function moveItem(type, index, direction) {
+        const targetIndex = index + direction;
+        if (type === 'group') {
+            if (targetIndex < 0 || targetIndex >= appData.length) return;
+            reorderItems('group', index, targetIndex);
+        } else if (type === 'barcode') {
+            const group = appData.find(g => g.id === currentGroupId);
+            if (!group || targetIndex < 0 || targetIndex >= group.items.length) return;
+            reorderItems('barcode', index, targetIndex);
         }
     }
 
@@ -895,7 +929,7 @@
         document.getElementById('groupModalTitle').innerText = 'グループを編集';
         document.getElementById('editingGroupId').value = group.id;
         document.getElementById('groupNameInput').value = group.title;
-        document.getElementById('groupIconInput').value = group.icon;
+        document.getElementById('groupIconInput').value = group.icon || '🛒';
         
         selectedColor = group.color || "#FFF7ED";
         document.querySelectorAll('.color-option').forEach(c => {
@@ -947,10 +981,9 @@
                 group.title = title;
                 group.icon = icon;
                 group.color = selectedColor;
-                group.illustration = icon;
             }
         } else {
-            appData.push({ id: 'group-' + Date.now(), title, icon, color: selectedColor, illustration: icon, items: [] });
+            appData.push({ id: 'group-' + Date.now(), title, icon: icon, color: selectedColor, items: [] });
         }
 
         saveData(); closeSheet(); renderGroupsView();
@@ -1122,7 +1155,6 @@
         );
     }
 
-    // 初期起動
     document.addEventListener('DOMContentLoaded', () => {
         loadData();
         renderGroupsView();
