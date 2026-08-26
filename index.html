@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>コード管理 - 静的バーコードウォレット</title>
-    <!-- JsBarcode (1次元バーコード描画ライブラリ) -->
+    <!-- JsBarcode -->
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
-    <!-- QRCode.js (2次元バーコード描画ライブラリ) -->
+    <!-- QRCode.js -->
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
     <style>
         :root {
@@ -296,7 +296,7 @@
             cursor: pointer;
             top: 0; left: 0; right: 0; bottom: 0;
             background-color: #e9e9ea;
-            transition: .3s;
+            transition: .3s cubic-bezier(0.25, 0.8, 0.25, 1);
             border-radius: 26px;
         }
 
@@ -306,7 +306,7 @@
             height: 22px; width: 22px;
             left: 2px; bottom: 2px;
             background-color: white;
-            transition: .3s;
+            transition: .3s cubic-bezier(0.25, 0.8, 0.25, 1);
             border-radius: 50%;
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
@@ -314,6 +314,7 @@
         input:checked + .slider { background-color: #34c759; }
         input:checked + .slider:before { transform: translateX(18px); }
 
+        /* スムーズなアニメーション用スタイルの修正箇所 */
         .barcode-display-box {
             background: #ffffff;
             border-radius: 12px;
@@ -324,14 +325,14 @@
             border: 1px solid #f0f0f0;
             cursor: pointer;
             position: relative;
-            transition: filter 0.3s ease;
+            overflow: hidden;
         }
 
-        .barcode-display-box svg, .barcode-display-box canvas {
-            max-width: 100%;
-            height: auto;
-            max-height: 110px;
-            transition: filter 0.3s ease;
+        .barcode-display-box svg, 
+        .barcode-display-box canvas, 
+        .barcode-val-text {
+            transition: filter 0.3s ease, opacity 0.3s ease;
+            will-change: filter, opacity;
         }
 
         .barcode-val-text {
@@ -341,30 +342,37 @@
             letter-spacing: 2px;
             color: #2c2c2e;
             margin-top: 10px;
-            transition: filter 0.3s ease;
         }
 
         .barcode-display-box.masked svg,
         .barcode-display-box.masked canvas,
         .barcode-display-box.masked .barcode-val-text {
             filter: blur(12px);
-            opacity: 0.25;
+            opacity: 0.2;
             user-select: none;
         }
 
-        .barcode-display-box.masked::after {
+        .barcode-display-box::after {
             content: "🔒 非表示中";
             position: absolute;
             top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
+            transform: translate(-50%, -50%) scale(0.9);
             font-size: 13px;
             font-weight: 700;
             color: #1c1c1e;
-            background: rgba(255, 255, 255, 0.88);
+            background: rgba(255, 255, 255, 0.92);
             padding: 6px 14px;
             border-radius: 20px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.08);
             pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            will-change: opacity, transform;
+        }
+
+        .barcode-display-box.masked::after {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
         }
 
         .barcode-actions {
@@ -694,6 +702,7 @@
             setupDragAndDropEvents(card, 'barcode');
 
             const targetId = `barcode-${item.id}`;
+            const displayBoxId = `display-box-${item.id}`;
             const avatarHTML = item.iconImage 
                 ? `<img src="${item.iconImage}" alt="icon">` 
                 : group.icon;
@@ -712,7 +721,7 @@
                         <span class="slider"></span>
                     </label>
                 </div>
-                <div class="barcode-display-box ${item.active ? 'masked' : ''}" onclick="openEditBarcodeModal('${item.id}')">
+                <div id="${displayBoxId}" class="barcode-display-box ${item.active ? 'masked' : ''}" onclick="openEditBarcodeModal('${item.id}')">
                     <div id="${targetId}"></div>
                     <div class="barcode-val-text">${escapeHTML(item.code)}</div>
                 </div>
@@ -927,6 +936,7 @@
         saveData(); closeSheet(); renderBarcodesView();
     }
 
+    /* 修正箇所：再描画を挟まずにクラスのみ切り替えてアニメーションを適用 */
     function toggleMask(itemId, isMasked) {
         const group = appData.find(g => g.id === currentGroupId);
         if (!group) return;
@@ -934,7 +944,11 @@
         if (item) { 
             item.active = isMasked; 
             saveData(); 
-            renderBarcodesView();
+            
+            const displayBox = document.getElementById(`display-box-${itemId}`);
+            if (displayBox) {
+                displayBox.classList.toggle('masked', isMasked);
+            }
         }
     }
 
@@ -1018,7 +1032,6 @@
         return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
     }
 
-    // 安全な初期化呼び出し
     function initApp() {
         loadData();
         renderGroupsView();
