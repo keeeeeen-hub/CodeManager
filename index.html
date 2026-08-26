@@ -1131,16 +1131,66 @@
         selectedColor = el.getAttribute('data-color');
     }
 
-    function handleImageUpload(event) {
+    // アップロード画像をアイコン用に縮小・再圧縮してからbase64化する
+    // (元画像が大きいとJSONバックアップが肥大化するため)
+    const ICON_MAX_SIZE = 200;   // 長辺の最大ピクセル数
+    const ICON_JPEG_QUALITY = 0.75;
+
+    function compressImageFile(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    let { width, height } = img;
+                    if (width > height && width > ICON_MAX_SIZE) {
+                        height = Math.round(height * (ICON_MAX_SIZE / width));
+                        width = ICON_MAX_SIZE;
+                    } else if (height > ICON_MAX_SIZE) {
+                        width = Math.round(width * (ICON_MAX_SIZE / height));
+                        height = ICON_MAX_SIZE;
+                    }
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+
+                    // 透過を保持したいのでPNGの場合は白背景を敷かず透過のまま描画
+                    // (JPEGにすると透過部分が黒くなるため、透過画像はPNGのまま軽量化)
+                    const hasAlpha = file.type === 'image/png' || file.type === 'image/gif' || file.type === 'image/webp';
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    const outputMime = hasAlpha ? 'image/png' : 'image/jpeg';
+                    const dataUrl = canvas.toDataURL(outputMime, ICON_JPEG_QUALITY);
+                    resolve(dataUrl);
+                };
+                img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+                img.src = e.target.result;
+            };
+            reader.onerror = () => reject(new Error('ファイルの読み込みに失敗しました'));
+            reader.readAsDataURL(file);
+        });
+    }
+
+    async function handleImageUpload(event) {
         const file = event.target.files[0];
         if (!file) return;
 
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            currentUploadedImageBase64 = e.target.result;
+        try {
+            const compressedDataUrl = await compressImageFile(file);
+            currentUploadedImageBase64 = compressedDataUrl;
             updateImagePreview();
-        };
-        reader.readAsDataURL(file);
+        } catch (err) {
+            console.warn('画像の圧縮に失敗したため、元画像をそのまま使用します', err);
+            // 圧縮に失敗した場合は従来通り元画像をそのまま読み込む
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                currentUploadedImageBase64 = e.target.result;
+                updateImagePreview();
+            };
+            reader.readAsDataURL(file);
+        }
     }
 
     function removeCustomIcon() {
