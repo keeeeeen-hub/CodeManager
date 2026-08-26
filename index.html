@@ -115,12 +115,16 @@
             position: relative;
             margin-bottom: 22px;
             cursor: grab;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: pan-y;
             transition: transform 0.2s, opacity 0.2s;
         }
 
         .group-card-wrapper.dragging, .barcode-card.dragging {
-            opacity: 0.4;
-            transform: scale(0.98);
+            opacity: 0.5;
+            transform: scale(0.96);
+            box-shadow: 0 12px 28px rgba(0,0,0,0.15);
         }
 
         .group-card-stack {
@@ -145,7 +149,7 @@
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            min-height: 140px;
+            min-height: 130px;
             overflow: hidden;
             z-index: 1;
         }
@@ -155,27 +159,6 @@
         .group-card-header {
             display: flex;
             align-items: flex-start;
-            gap: 12px;
-        }
-
-        .group-icon-badge {
-            width: 44px;
-            height: 44px;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.85);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 22px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-            flex-shrink: 0;
-            overflow: hidden;
-        }
-
-        .group-icon-badge img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
         }
 
         .group-title {
@@ -189,13 +172,6 @@
             font-size: 13px;
             color: rgba(0, 0, 0, 0.55);
             font-weight: 500;
-        }
-
-        .group-count-tag {
-            font-size: 15px;
-            font-weight: 700;
-            color: #2c2c2e;
-            margin-top: 18px;
         }
 
         .group-illustration {
@@ -238,6 +214,10 @@
             box-shadow: var(--card-shadow);
             border: 1px solid rgba(0, 0, 0, 0.03);
             cursor: grab;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: pan-y;
+            transition: transform 0.2s, opacity 0.2s;
         }
 
         .barcode-header {
@@ -316,7 +296,6 @@
         input:checked + .slider { background-color: #34c759; }
         input:checked + .slider:before { transform: translateX(18px); }
 
-        /* スムーズなアニメーション用スタイルの修正箇所 */
         .barcode-display-box {
             background: #ffffff;
             border-radius: 12px;
@@ -603,7 +582,15 @@
     let selectedColor = "#FFF7ED";
     let isEditMode = false;
     let currentUploadedImageBase64 = "";
+
+    // ドラッグ＆ドロップ関連変数
     let dragSrcIndex = null;
+    let touchTimer = null;
+    let touchDraggedEl = null;
+    let touchDragType = null;
+    let initialTouchY = 0;
+    let dragStartIndex = -1;
+    let currentHoverIndex = -1;
 
     function loadData() {
         const local = localStorage.getItem('static_barcode_app_data');
@@ -653,13 +640,11 @@
                 <div class="group-card" style="background-color: ${group.color};" onclick="handleGroupClick('${group.id}')">
                     ${editBtnsHTML}
                     <div class="group-card-header">
-                        <div class="group-icon-badge">${group.icon}</div>
                         <div>
                             <div class="group-title">${escapeHTML(group.title)}</div>
                             <div class="group-subtitle">${count}枚登録</div>
                         </div>
                     </div>
-                    <div class="group-count-tag">${count}枚登録</div>
                     <div class="group-illustration">${group.illustration || group.icon}</div>
                 </div>
             `;
@@ -762,7 +747,9 @@
         } catch(e) { console.error(e); }
     }
 
+    /* PCマウスドラッグ＆スマホ長押しドラッグ対応 */
     function setupDragAndDropEvents(el, type) {
+        // === PC用 HTML5 Drag & Drop ===
         el.addEventListener('dragstart', (e) => {
             dragSrcIndex = parseInt(el.dataset.index);
             el.classList.add('dragging');
@@ -782,22 +769,85 @@
             e.preventDefault();
             const targetIndex = parseInt(el.dataset.index);
             if (dragSrcIndex === null || dragSrcIndex === targetIndex) return;
-
-            if (type === 'group') {
-                const movedItem = appData.splice(dragSrcIndex, 1)[0];
-                appData.splice(targetIndex, 0, movedItem);
-                saveData();
-                renderGroupsView();
-            } else if (type === 'barcode') {
-                const group = appData.find(g => g.id === currentGroupId);
-                if (group) {
-                    const movedItem = group.items.splice(dragSrcIndex, 1)[0];
-                    group.items.splice(targetIndex, 0, movedItem);
-                    saveData();
-                    renderBarcodesView();
-                }
-            }
+            reorderItems(type, dragSrcIndex, targetIndex);
         });
+
+        // === スマホ / タッチ長押しによる並び替え ===
+        el.addEventListener('touchstart', (e) => {
+            // ボタンやスイッチの操作時は並び替えを発動させない
+            if (e.target.closest('.group-edit-actions') || e.target.closest('.switch') || e.target.closest('.action-btn-subtle') || e.target.closest('input') || e.target.closest('button')) {
+                return;
+            }
+
+            const touch = e.touches[0];
+            initialTouchY = touch.clientY;
+            const index = parseInt(el.dataset.index);
+
+            touchTimer = setTimeout(() => {
+                touchDraggedEl = el;
+                touchDragType = type;
+                dragStartIndex = index;
+                currentHoverIndex = index;
+
+                if (navigator.vibrate) navigator.vibrate(50);
+                el.classList.add('dragging');
+            }, 400); // 400ms の長押しでドラッグ開始
+        }, { passive: true });
+
+        el.addEventListener('touchmove', (e) => {
+            if (!touchDraggedEl) {
+                const touch = e.touches[0];
+                if (Math.abs(touch.clientY - initialTouchY) > 10) {
+                    clearTimeout(touchTimer); // スクロール時は長押しをキャンセル
+                }
+                return;
+            }
+
+            e.preventDefault(); // ドラッグ中は画面スクロールを停止
+
+            const touch = e.touches[0];
+            const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
+            if (!targetEl) return;
+
+            const cardWrapper = targetEl.closest(type === 'group' ? '.group-card-wrapper' : '.barcode-card');
+            if (cardWrapper && cardWrapper.dataset.index !== undefined) {
+                currentHoverIndex = parseInt(cardWrapper.dataset.index);
+            }
+        }, { passive: false });
+
+        const handleTouchEnd = () => {
+            clearTimeout(touchTimer);
+            if (touchDraggedEl) {
+                touchDraggedEl.classList.remove('dragging');
+                if (dragStartIndex !== -1 && currentHoverIndex !== -1 && dragStartIndex !== currentHoverIndex) {
+                    reorderItems(touchDragType, dragStartIndex, currentHoverIndex);
+                }
+                touchDraggedEl = null;
+                touchDragType = null;
+                dragStartIndex = -1;
+                currentHoverIndex = -1;
+            }
+        };
+
+        el.addEventListener('touchend', handleTouchEnd);
+        el.addEventListener('touchcancel', handleTouchEnd);
+    }
+
+    function reorderItems(type, srcIndex, targetIndex) {
+        if (type === 'group') {
+            const movedItem = appData.splice(srcIndex, 1)[0];
+            appData.splice(targetIndex, 0, movedItem);
+            saveData();
+            renderGroupsView();
+        } else if (type === 'barcode') {
+            const group = appData.find(g => g.id === currentGroupId);
+            if (group) {
+                const movedItem = group.items.splice(srcIndex, 1)[0];
+                group.items.splice(targetIndex, 0, movedItem);
+                saveData();
+                renderBarcodesView();
+            }
+        }
     }
 
     function handleLeftHeaderClick() {
@@ -908,19 +958,23 @@
 
     function deleteGroup(groupId) {
         if (!confirm("グループと含まれるコードを削除しますか？")) return;
+        
         appData = appData.filter(g => g.id !== groupId);
-        saveData(); renderGroupsView();
+        saveData();
+        renderGroupsView();
     }
 
     function saveBarcode() {
         const editId = document.getElementById('editingBarcodeId').value;
-        const targetGroupId = document.getElementById('barcodeGroupSelect').value;
+        const groupId = document.getElementById('barcodeGroupSelect').value;
         const name = document.getElementById('barcodeNameInput').value.trim();
         const type = document.getElementById('barcodeTypeSelect').value;
         const code = document.getElementById('barcodeValInput').value.trim();
-        if (!name || !code) return alert('入力内容を確認してください');
 
-        const group = appData.find(g => g.id === targetGroupId);
+        if (!name) return alert('カード名を入力してください');
+        if (!code) return alert('コード番号を入力してください');
+
+        const group = appData.find(g => g.id === groupId);
         if (!group) return;
 
         if (editId) {
@@ -932,35 +986,56 @@
                 item.iconImage = currentUploadedImageBase64;
             }
         } else {
-            group.items.push({ id: 'item-' + Date.now(), name, type, code, active: false, iconImage: currentUploadedImageBase64 });
+            group.items.push({
+                id: 'item-' + Date.now(),
+                name: name,
+                type: type,
+                code: code,
+                active: false,
+                iconImage: currentUploadedImageBase64
+            });
         }
 
-        saveData(); closeSheet(); renderBarcodesView();
+        saveData();
+        closeSheet();
+        renderBarcodesView();
     }
 
-    /* 修正箇所：再描画を挟まずにクラスのみ切り替えてアニメーションを適用 */
-    function toggleMask(itemId, isMasked) {
+    function deleteBarcode(itemId) {
+        if (!confirm("このバーコードを削除しますか？")) return;
+
+        const group = appData.find(g => g.id === currentGroupId);
+        if (group) {
+            group.items = group.items.filter(i => i.id !== itemId);
+            saveData();
+            renderBarcodesView();
+        }
+    }
+
+    function toggleMask(itemId, isChecked) {
         const group = appData.find(g => g.id === currentGroupId);
         if (!group) return;
+
         const item = group.items.find(i => i.id === itemId);
-        if (item) { 
-            item.active = isMasked; 
-            saveData(); 
+        if (item) {
+            item.active = isChecked;
+            saveData();
             
             const displayBox = document.getElementById(`display-box-${itemId}`);
             if (displayBox) {
-                displayBox.classList.toggle('masked', isMasked);
+                if (isChecked) {
+                    displayBox.classList.add('masked');
+                } else {
+                    displayBox.classList.remove('masked');
+                }
             }
         }
     }
 
-    function deleteBarcode(itemId) {
-        if (!confirm("削除しますか？")) return;
-        const group = appData.find(g => g.id === currentGroupId);
-        if (group) {
-            group.items = group.items.filter(i => i.id !== itemId);
-            saveData(); renderBarcodesView();
-        }
+    function selectColor(el) {
+        document.querySelectorAll('.color-option').forEach(c => c.classList.remove('selected'));
+        el.classList.add('selected');
+        selectedColor = el.getAttribute('data-color');
     }
 
     function handleImageUpload(event) {
@@ -982,17 +1057,17 @@
     }
 
     function updateImagePreview() {
-        const preview = document.getElementById('barcodeIconPreview');
+        const previewEl = document.getElementById('barcodeIconPreview');
         if (currentUploadedImageBase64) {
-            preview.innerHTML = `<img src="${currentUploadedImageBase64}" alt="preview">`;
+            previewEl.innerHTML = `<img src="${currentUploadedImageBase64}" alt="preview">`;
         } else {
-            preview.innerText = '🖼️';
+            previewEl.innerHTML = '🖼️';
         }
     }
 
-    function openSheet(id) {
+    function openSheet(modalId) {
         document.getElementById('sheetOverlay').classList.add('active');
-        document.getElementById(id).classList.add('active');
+        document.getElementById(modalId).classList.add('active');
     }
 
     function closeSheet() {
@@ -1000,50 +1075,58 @@
         document.querySelectorAll('.sheet-card').forEach(s => s.classList.remove('active'));
     }
 
-    function selectColor(el) {
-        document.querySelectorAll('.color-option').forEach(c => c.classList.remove('selected'));
-        el.classList.add('selected');
-        selectedColor = el.getAttribute('data-color');
-    }
-
     function exportDataJSON() {
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appData, null, 2));
-        const a = document.createElement('a');
-        a.href = dataStr;
-        a.download = `barcode_backup_${new Date().toISOString().slice(0,10)}.json`;
-        a.click();
+        const downloadAnchor = document.createElement('a');
+        downloadAnchor.setAttribute("href", dataStr);
+        downloadAnchor.setAttribute("download", `barcode_wallet_backup_${new Date().toISOString().slice(0,10)}.json`);
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        downloadAnchor.remove();
     }
 
     function importDataJSON(event) {
         const file = event.target.files[0];
         if (!file) return;
+
         const reader = new FileReader();
-        reader.onload = e => {
+        reader.onload = function(e) {
             try {
                 const imported = JSON.parse(e.target.result);
                 if (Array.isArray(imported)) {
-                    appData = imported; saveData(); closeSheet(); renderGroupsView();
-                    alert("データを復元しました");
+                    appData = imported;
+                    saveData();
+                    closeSheet();
+                    renderGroupsView();
+                    alert('データを正常に復元しました。');
+                } else {
+                    alert('無効なデータ形式です。');
                 }
-            } catch(err) { alert("読み込み失敗"); }
+            } catch(err) {
+                alert('JSONファイルの読み込みに失敗しました。');
+            }
         };
         reader.readAsText(file);
     }
 
     function escapeHTML(str) {
-        return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+        if (!str) return '';
+        return str.replace(/[&<>'"]/g, 
+            tag => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                "'": '&#39;',
+                '"': '&quot;'
+            }[tag] || tag)
+        );
     }
 
-    function initApp() {
+    // 初期起動
+    document.addEventListener('DOMContentLoaded', () => {
         loadData();
         renderGroupsView();
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initApp);
-    } else {
-        initApp();
-    }
+    });
 </script>
 </body>
 </html>
