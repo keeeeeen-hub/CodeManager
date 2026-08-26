@@ -1168,14 +1168,51 @@
         document.querySelectorAll('.sheet-card').forEach(s => s.classList.remove('active'));
     }
 
-    function exportDataJSON() {
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appData, null, 2));
-        const downloadAnchor = document.createElement('a');
-        downloadAnchor.setAttribute("href", dataStr);
-        downloadAnchor.setAttribute("download", `barcode_wallet_backup_${new Date().toISOString().slice(0,10)}.json`);
-        document.body.appendChild(downloadAnchor);
-        downloadAnchor.click();
-        downloadAnchor.remove();
+    async function exportDataJSON() {
+        const filename = `barcode_wallet_backup_${new Date().toISOString().slice(0,10)}.json`;
+        const jsonStr = JSON.stringify(appData, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+
+        // 1) 共有シートが使える環境（iOS Safari等）はこちらを優先。
+        //    「ファイルに保存」から確実に保存できる。
+        if (navigator.canShare && navigator.share) {
+            try {
+                const file = new File([blob], filename, { type: 'application/json' });
+                if (navigator.canShare({ files: [file] })) {
+                    await navigator.share({ files: [file], title: filename });
+                    return;
+                }
+            } catch (err) {
+                if (err && err.name === 'AbortError') return; // ユーザーが共有をキャンセル
+                // 共有に失敗した場合は下のダウンロード処理へフォールバック
+            }
+        }
+
+        // 2) 通常のBlobダウンロード（PC・Android Chromeなど）
+        try {
+            const url = URL.createObjectURL(blob);
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.href = url;
+            downloadAnchor.download = filename;
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+            // ダウンロードが実行されたか確信が持てない環境向けの案内
+            setTimeout(() => {
+                alert('バックアップファイルの出力を開始しました。ダウンロードフォルダ等をご確認ください。\n\n保存できない場合は、次に表示されるタブから手動で保存してください。');
+            }, 300);
+        } catch (err) {
+            // 3) 最終フォールバック：新しいタブでJSONを開き、手動保存してもらう
+            try {
+                const url = URL.createObjectURL(blob);
+                window.open(url, '_blank');
+                alert('自動ダウンロードに対応していない環境のため、新しいタブでデータを開きました。\n共有・保存メニューから「' + filename + '」として保存してください。');
+            } catch (err2) {
+                alert('バックアップファイルの出力に失敗しました。ブラウザの設定をご確認の上、再度お試しください。');
+            }
+        }
     }
 
     function importDataJSON(event) {
