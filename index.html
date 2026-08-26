@@ -112,17 +112,17 @@
         .group-card-wrapper {
             position: relative;
             margin-bottom: 18px;
+            cursor: grab;
             user-select: none;
             -webkit-user-select: none;
             touch-action: pan-y;
-            will-change: transform;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
         }
 
         .group-card-wrapper.dragging, .barcode-card.dragging {
-            opacity: 0.92;
-            z-index: 1000 !important;
-            box-shadow: 0 16px 32px rgba(0,0,0,0.18) !important;
-            cursor: grabbing;
+            opacity: 0.85;
+            z-index: 999 !important;
+            box-shadow: 0 16px 32px rgba(0,0,0,0.2) !important;
         }
 
         .group-card-stack {
@@ -211,11 +211,12 @@
             margin-bottom: 16px;
             box-shadow: var(--card-shadow);
             border: 1px solid rgba(0, 0, 0, 0.03);
+            cursor: grab;
             position: relative;
             user-select: none;
             -webkit-user-select: none;
             touch-action: pan-y;
-            will-change: transform;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
         }
 
         .barcode-header {
@@ -607,6 +608,10 @@
             const count = group.items ? group.items.length : 0;
             const wrapper = document.createElement('div');
             wrapper.className = 'group-card-wrapper';
+            wrapper.draggable = true;
+            wrapper.dataset.index = index;
+
+            setupDragAndDropEvents(wrapper, 'group');
 
             let editBtnsHTML = '';
             if (isEditMode) {
@@ -620,6 +625,7 @@
                 `;
             }
 
+            // 左側アイコンを排除し、右側の大きいアイコンのみ配置
             wrapper.innerHTML = `
                 <div class="group-card-stack"></div>
                 <div class="group-card" style="background-color: ${group.color};" onclick="handleGroupClick('${group.id}')">
@@ -634,16 +640,10 @@
                 </div>
             `;
             container.appendChild(wrapper);
-
-            setupLongPressDrag(wrapper, 'group', index);
         });
     }
 
     function handleGroupClick(groupId) {
-        if (dragJustEnded) {
-            dragJustEnded = false;
-            return;
-        }
         if (isEditMode) {
             openEditGroupModal(groupId);
         } else {
@@ -674,6 +674,10 @@
         group.items.forEach((item, index) => {
             const card = document.createElement('div');
             card.className = 'barcode-card';
+            card.draggable = true;
+            card.dataset.index = index;
+
+            setupDragAndDropEvents(card, 'barcode');
 
             const targetId = `barcode-${item.id}`;
             const displayBoxId = `display-box-${item.id}`;
@@ -706,7 +710,7 @@
                         <span class="slider"></span>
                     </label>
                 </div>
-                <div id="${displayBoxId}" class="barcode-display-box ${item.active ? 'masked' : ''}" onclick="if(!dragJustEnded) openEditBarcodeModal('${item.id}')">
+                <div id="${displayBoxId}" class="barcode-display-box ${item.active ? 'masked' : ''}" onclick="openEditBarcodeModal('${item.id}')">
                     <div id="${targetId}"></div>
                     <div class="barcode-val-text">${escapeHTML(item.code)}</div>
                 </div>
@@ -716,7 +720,6 @@
             `;
             container.appendChild(card);
 
-            setupLongPressDrag(card, 'barcode', index);
             setTimeout(() => renderBarcodeGraphic(targetId, item.type, item.code), 50);
         });
     }
@@ -747,182 +750,169 @@
     }
 
     /* -------------------------------------------------------------
-       長押しドラッグ＆ドロップ（リアルタイムアニメーション対応）
+       強化版ドラッグ＆ドロップ（長押し追従＋ライブ入れ替えアニメーション）
     ------------------------------------------------------------- */
-    let dragManager = {
-        timer: null,
-        isDragging: false,
-        activeEl: null,
-        type: null,
-        startIndex: -1,
-        hoverIndex: -1,
-        startY: 0,
-        stepHeight: 0,
-        rects: [],
-        items: []
-    };
+    let touchTimer = null;
+    let isTouchDragging = false;
+    let activeDragEl = null;
+    let activeDragType = null;
+    let dragStartIndex = -1;
+    let currentHoverIndex = -1;
+    let touchStartY = 0;
+    let dragSiblings = [];   // ドラッグ中に一緒にシフトさせる他のカード
+    let dragItemStep = 0;    // カード1枚分の移動量（高さ＋余白）
 
-    let dragJustEnded = false;
+    function setupDragAndDropEvents(el, type) {
+        // --- PC マウスドラッグ ---
+        el.addEventListener('dragstart', (e) => {
+            dragStartIndex = parseInt(el.dataset.index);
+            activeDragType = type;
+            el.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        });
 
-    function setupLongPressDrag(el, type, index) {
-        el.dataset.index = index;
+        el.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+        el.addEventListener('dragend', () => el.classList.remove('dragging'));
 
-        const onPointerDown = (e) => {
-            if (e.target.closest('.card-edit-actions') || 
-                e.target.closest('.switch') || 
-                e.target.closest('.action-btn-subtle') || 
-                e.target.closest('input') || 
-                e.target.closest('button')) {
+        el.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const targetIndex = parseInt(el.dataset.index);
+            if (dragStartIndex !== -1 && dragStartIndex !== targetIndex && activeDragType === type) {
+                reorderItems(type, dragStartIndex, targetIndex);
+            }
+        });
+
+        // --- スマホ 長押しタッチドラッグ ---
+        el.addEventListener('touchstart', (e) => {
+            if (e.target.closest('.card-edit-actions') || e.target.closest('.switch') || e.target.closest('.action-btn-subtle') || e.target.closest('input') || e.target.closest('button')) {
                 return;
             }
 
-            if (e.button !== undefined && e.button !== 0) return;
+            const touch = e.touches[0];
+            touchStartY = touch.clientY;
+            dragStartIndex = parseInt(el.dataset.index);
+            currentHoverIndex = dragStartIndex;
 
-            dragManager.startY = e.clientY;
-            dragManager.type = type;
-            dragManager.startIndex = index;
-            dragManager.hoverIndex = index;
-            dragManager.activeEl = el;
+            touchTimer = setTimeout(() => {
+                isTouchDragging = true;
+                activeDragEl = el;
+                activeDragType = type;
 
-            dragManager.timer = setTimeout(() => {
-                startDrag(e);
-            }, 300);
-        };
+                if (navigator.vibrate) navigator.vibrate(40);
 
-        const onPointerMove = (e) => {
-            if (!dragManager.isDragging) {
-                if (Math.abs(e.clientY - dragManager.startY) > 8) {
-                    clearTimeout(dragManager.timer);
+                // 同じリスト内の他のカードを取得し、シフトアニメーション用に準備
+                const container = el.parentNode;
+                dragSiblings = Array.from(container.children)
+                    .filter(child => child !== el && child.dataset.index !== undefined)
+                    .map(child => ({ el: child, index: parseInt(child.dataset.index) }));
+
+                // カード1枚分の移動距離（高さ＋下マージン）を計測
+                const cs = window.getComputedStyle(el);
+                dragItemStep = el.offsetHeight + parseFloat(cs.marginBottom || 0);
+
+                el.classList.add('dragging');
+                el.style.transition = 'none'; // 指追従は即時反映
+                // ドラッグ中要素を透過させ、指の下にある他の要素を取得可能にする
+                el.style.pointerEvents = 'none';
+            }, 350); // 350msの長押しで発動
+        }, { passive: true });
+
+        el.addEventListener('touchmove', (e) => {
+            const touch = e.touches[0];
+
+            if (!isTouchDragging) {
+                if (Math.abs(touch.clientY - touchStartY) > 12) {
+                    clearTimeout(touchTimer); // 指が動いたら長押し解除
                 }
                 return;
             }
 
             if (e.cancelable) e.preventDefault();
-            onDragMove(e);
-        };
 
-        const onPointerUp = (e) => {
-            clearTimeout(dragManager.timer);
-            if (dragManager.isDragging) {
-                endDrag();
+            // カードを指のY位置に追従させる
+            const deltaY = touch.clientY - touchStartY;
+            if (activeDragEl) {
+                activeDragEl.style.transform = `translateY(${deltaY}px) scale(1.03)`;
             }
-        };
 
-        el.addEventListener('pointerdown', onPointerDown);
-        el.addEventListener('pointermove', onPointerMove);
-        el.addEventListener('pointerup', onPointerUp);
-        el.addEventListener('pointercancel', onPointerUp);
-    }
-
-    function startDrag(e) {
-        dragManager.isDragging = true;
-        if (navigator.vibrate) navigator.vibrate(40);
-
-        const containerId = dragManager.type === 'group' ? 'groupsContainer' : 'barcodesContainer';
-        const container = document.getElementById(containerId);
-        const selector = dragManager.type === 'group' ? '.group-card-wrapper' : '.barcode-card';
-        
-        dragManager.items = Array.from(container.querySelectorAll(selector));
-        dragManager.rects = dragManager.items.map(item => item.getBoundingClientRect());
-
-        if (dragManager.items.length > 1) {
-            dragManager.stepHeight = dragManager.rects[1].top - dragManager.rects[0].top;
-        } else {
-            dragManager.stepHeight = dragManager.rects[0].height + 16;
-        }
-
-        dragManager.activeEl.classList.add('dragging');
-        dragManager.activeEl.style.zIndex = '1000';
-        dragManager.activeEl.style.transition = 'none';
-
-        dragManager.items.forEach((item, idx) => {
-            if (idx !== dragManager.startIndex) {
-                item.style.transition = 'transform 0.25s cubic-bezier(0.2, 0, 0, 1)';
-            }
-        });
-
-        document.body.style.userSelect = 'none';
-        document.body.style.webkitUserSelect = 'none';
-    }
-
-    function onDragMove(e) {
-        const deltaY = e.clientY - dragManager.startY;
-        dragManager.activeEl.style.transform = `translateY(${deltaY}px) scale(1.03)`;
-
-        const startRect = dragManager.rects[dragManager.startIndex];
-        const currentCenterY = startRect.top + startRect.height / 2 + deltaY;
-
-        let closestIndex = dragManager.startIndex;
-        let minDistance = Infinity;
-
-        dragManager.rects.forEach((rect, idx) => {
-            const midY = rect.top + rect.height / 2;
-            const dist = Math.abs(currentCenterY - midY);
-            if (dist < minDistance) {
-                minDistance = dist;
-                closestIndex = idx;
-            }
-        });
-
-        if (closestIndex !== dragManager.hoverIndex) {
-            dragManager.hoverIndex = closestIndex;
-            updateSiblingTransforms();
-        }
-    }
-
-    function updateSiblingTransforms() {
-        const start = dragManager.startIndex;
-        const hover = dragManager.hoverIndex;
-        const step = dragManager.stepHeight;
-
-        dragManager.items.forEach((item, idx) => {
-            if (idx === start) return;
-
-            let shift = 0;
-            if (start < hover) {
-                if (idx > start && idx <= hover) {
-                    shift = -step;
-                }
-            } else if (start > hover) {
-                if (idx >= hover && idx < start) {
-                    shift = step;
+            // 指の下にあるカードのインデックスを取得
+            const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
+            let hoverIndex = currentHoverIndex;
+            if (targetEl) {
+                const cardWrapper = targetEl.closest(type === 'group' ? '.group-card-wrapper' : '.barcode-card');
+                if (cardWrapper && cardWrapper.dataset.index !== undefined) {
+                    hoverIndex = parseInt(cardWrapper.dataset.index);
                 }
             }
-            item.style.transform = `translateY(${shift}px)`;
-        });
-    }
 
-    function endDrag() {
-        dragManager.isDragging = false;
-        clearTimeout(dragManager.timer);
+            // ホバー位置が変わったら、間にある他のカードをアニメーション付きでシフトして
+            // 「入れ替え途中」のプレビューを表示する
+            if (hoverIndex !== currentHoverIndex) {
+                currentHoverIndex = hoverIndex;
+                updateSiblingShiftPreview();
+            }
+        }, { passive: false });
 
-        const start = dragManager.startIndex;
-        const hover = dragManager.hoverIndex;
-        const type = dragManager.type;
-
-        if (dragManager.items) {
-            dragManager.items.forEach(item => {
-                item.style.transform = '';
-                item.style.transition = '';
-                item.classList.remove('dragging');
-                item.style.zIndex = '';
+        function updateSiblingShiftPreview() {
+            dragSiblings.forEach(sib => {
+                let shift = 0;
+                if (dragStartIndex < currentHoverIndex && sib.index > dragStartIndex && sib.index <= currentHoverIndex) {
+                    shift = -dragItemStep; // ドラッグ中カードより後ろにあった物は1枠分前へ
+                } else if (dragStartIndex > currentHoverIndex && sib.index < dragStartIndex && sib.index >= currentHoverIndex) {
+                    shift = dragItemStep; // 前にあった物は1枠分後ろへ
+                }
+                sib.el.style.transition = 'transform 0.22s cubic-bezier(0.22, 0.9, 0.25, 1)';
+                sib.el.style.transform = shift !== 0 ? `translateY(${shift}px)` : '';
             });
         }
 
-        document.body.style.userSelect = '';
-        document.body.style.webkitUserSelect = '';
+        const handleTouchEnd = () => {
+            clearTimeout(touchTimer);
+            if (isTouchDragging && activeDragEl) {
+                const finalType = activeDragType;
+                const finalStart = dragStartIndex;
+                const finalTarget = currentHoverIndex;
+                const finalEl = activeDragEl;
+                const siblingsSnapshot = dragSiblings;
 
-        if (start !== -1 && hover !== -1 && start !== hover) {
-            reorderItems(type, start, hover);
-        }
+                // ドラッグ中カードを最終位置へスナップアニメーションさせてから確定する
+                finalEl.style.transition = 'transform 0.2s cubic-bezier(0.22, 0.9, 0.25, 1)';
+                finalEl.style.transform = `translateY(${(finalTarget - finalStart) * dragItemStep}px) scale(1.03)`;
 
-        dragJustEnded = true;
-        setTimeout(() => { dragJustEnded = false; }, 100);
+                setTimeout(() => {
+                    // 見た目をリセットしてから実データを並べ替えて再描画する
+                    siblingsSnapshot.forEach(sib => {
+                        sib.el.style.transition = '';
+                        sib.el.style.transform = '';
+                    });
+                    finalEl.classList.remove('dragging');
+                    finalEl.style.transition = '';
+                    finalEl.style.transform = '';
+                    finalEl.style.pointerEvents = '';
 
-        dragManager.activeEl = null;
-        dragManager.startIndex = -1;
-        dragManager.hoverIndex = -1;
-        dragManager.items = [];
+                    if (finalStart !== -1 && finalTarget !== -1 && finalStart !== finalTarget) {
+                        reorderItems(finalType, finalStart, finalTarget);
+                    }
+                }, 200);
+
+                isTouchDragging = false;
+                activeDragEl = null;
+                activeDragType = null;
+                dragStartIndex = -1;
+                currentHoverIndex = -1;
+                dragSiblings = [];
+            } else {
+                isTouchDragging = false;
+                activeDragEl = null;
+                activeDragType = null;
+                dragStartIndex = -1;
+                currentHoverIndex = -1;
+                dragSiblings = [];
+            }
+        };
+
+        el.addEventListener('touchend', handleTouchEnd);
+        el.addEventListener('touchcancel', handleTouchEnd);
     }
 
     function reorderItems(type, srcIndex, targetIndex) {
