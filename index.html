@@ -38,7 +38,6 @@
             padding-bottom: 40px;
         }
 
-        /* アプリ枠（スマホ表示に最適化） */
         .app-container {
             width: 100%;
             max-width: 440px;
@@ -50,7 +49,6 @@
             flex-direction: column;
         }
 
-        /* ヘッダー */
         header {
             padding: 50px 20px 12px 20px;
             background: rgba(248, 249, 250, 0.85);
@@ -94,7 +92,6 @@
             line-height: 1.2;
         }
 
-        /* メインコンテンツエリア */
         main {
             padding: 12px 18px 30px 18px;
             flex: 1;
@@ -112,7 +109,6 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
-        /* グループカード（画面1） */
         .group-card-wrapper {
             position: relative;
             margin-bottom: 22px;
@@ -210,7 +206,6 @@
             pointer-events: none;
         }
 
-        /* グループ編集用コントロールボタン */
         .group-edit-actions {
             position: absolute;
             top: 14px;
@@ -233,7 +228,6 @@
         .edit-badge-btn.delete { color: var(--accent-red); }
         .edit-badge-btn.edit { color: var(--accent-blue); }
 
-        /* バーコードカード（画面2） */
         .barcode-card {
             background: #ffffff;
             border-radius: var(--border-radius);
@@ -288,7 +282,6 @@
             font-weight: 500;
         }
 
-        /* iOS風トグルスイッチ */
         .switch {
             position: relative;
             display: inline-block;
@@ -321,7 +314,6 @@
         input:checked + .slider { background-color: #34c759; }
         input:checked + .slider:before { transform: translateX(18px); }
 
-        /* バーコード表示ボックス */
         .barcode-display-box {
             background: #ffffff;
             border-radius: 12px;
@@ -352,7 +344,6 @@
             transition: filter 0.3s ease;
         }
 
-        /* スイッチONの時のぼかし非表示スタイル */
         .barcode-display-box.masked svg,
         .barcode-display-box.masked canvas,
         .barcode-display-box.masked .barcode-val-text {
@@ -393,7 +384,6 @@
             padding: 4px 8px;
         }
 
-        /* ボトムシートモーダル */
         .sheet-overlay {
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
@@ -483,7 +473,6 @@
 <body>
 
 <div class="app-container">
-    <!-- ヘッダー -->
     <header>
         <div class="header-top">
             <button class="header-btn" id="leftHeaderBtn" onclick="handleLeftHeaderClick()">Edit</button>
@@ -492,9 +481,7 @@
         <div class="page-title" id="pageTitle">コード管理</div>
     </header>
 
-    <!-- メイン領域 -->
     <main>
-        <!-- 画面1: グループ一覧 -->
         <div id="viewGroups" class="view active">
             <div id="groupsContainer"></div>
             <div class="settings-bar">
@@ -503,17 +490,14 @@
             </div>
         </div>
 
-        <!-- 画面2: バーコード一覧 -->
         <div id="viewBarcodes" class="view">
             <div id="barcodesContainer"></div>
         </div>
     </main>
 </div>
 
-<!-- ボトムシート（オーバーレイ） -->
 <div class="sheet-overlay" id="sheetOverlay" onclick="closeSheet()"></div>
 
-<!-- モーダル：グループ追加・編集 -->
 <div class="sheet-card" id="groupModal">
     <div class="sheet-handle"></div>
     <div class="sheet-title" id="groupModalTitle">新しいグループを追加</div>
@@ -539,7 +523,6 @@
     <button class="primary-btn" onclick="saveGroup()">保存する</button>
 </div>
 
-<!-- モーダル：バーコード追加・編集 -->
 <div class="sheet-card" id="barcodeModal">
     <div class="sheet-handle"></div>
     <div class="sheet-title" id="barcodeModalTitle">新しいバーコードを追加</div>
@@ -576,7 +559,6 @@
     <button class="primary-btn" onclick="saveBarcode()">バーコードを保存</button>
 </div>
 
-<!-- モーダル：バックアップ -->
 <div class="sheet-card" id="backupModal">
     <div class="sheet-handle"></div>
     <div class="sheet-title">バックアップ & 復元</div>
@@ -589,7 +571,6 @@
 </div>
 
 <script>
-    // 初期サンプルデータ
     const initialData = [
         {
             id: "group-1", title: "食品・スーパー", icon: "🍞", color: "#FFF7ED", illustration: "🧺",
@@ -610,10 +591,9 @@
     let appData = [];
     let currentGroupId = null;
     let selectedColor = "#FFF7ED";
-    let isEditMode = false; // グループ編集モード
-    let currentUploadedImageBase64 = ""; // アップロードされたアイコン画像の一時保存
-
-    let dragSrcIndex = null; // ドラッグアンドドロップ用
+    let isEditMode = false;
+    let currentUploadedImageBase64 = "";
+    let dragSrcIndex = null;
 
     function loadData() {
         const local = localStorage.getItem('static_barcode_app_data');
@@ -646,7 +626,6 @@
             wrapper.draggable = true;
             wrapper.dataset.index = index;
 
-            // ドラッグ＆ドロップ イベントリスナー設定
             setupDragAndDropEvents(wrapper, 'group');
 
             let editBtnsHTML = '';
@@ -752,21 +731,26 @@
         if (!el) return;
         el.innerHTML = '';
 
-        if (type === 'QR') {
-            const canvas = document.createElement('canvas');
-            QRCode.toCanvas(canvas, code, { width: 140, margin: 1 }, err => { if(!err) el.appendChild(canvas); });
-        } else {
-            const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-            el.appendChild(svg);
-            try {
-                JsBarcode(svg, code, { format: type, displayValue: false, height: 55, margin: 0, width: 2 });
-            } catch (e) {
-                JsBarcode(svg, code, { format: "CODE128", displayValue: false, height: 55, margin: 0, width: 2 });
+        try {
+            if (type === 'QR') {
+                const canvas = document.createElement('canvas');
+                if (typeof QRCode !== 'undefined' && QRCode.toCanvas) {
+                    QRCode.toCanvas(canvas, code, { width: 140, margin: 1 }, err => { if(!err) el.appendChild(canvas); });
+                }
+            } else {
+                const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+                el.appendChild(svg);
+                if (typeof JsBarcode !== 'undefined') {
+                    try {
+                        JsBarcode(svg, code, { format: type, displayValue: false, height: 55, margin: 0, width: 2 });
+                    } catch (e) {
+                        JsBarcode(svg, code, { format: "CODE128", displayValue: false, height: 55, margin: 0, width: 2 });
+                    }
+                }
             }
-        }
+        } catch(e) { console.error(e); }
     }
 
-    /* --- ドラッグ＆ドロップ処理 --- */
     function setupDragAndDropEvents(el, type) {
         el.addEventListener('dragstart', (e) => {
             dragSrcIndex = parseInt(el.dataset.index);
@@ -805,21 +789,17 @@
         });
     }
 
-    /* --- ヘッダー操作 --- */
     function handleLeftHeaderClick() {
         if (currentGroupId) {
             renderGroupsView();
         } else {
-            // Editモードのトグル
             isEditMode = !isEditMode;
             renderGroupsView();
         }
     }
 
-    /* --- モーダル・追加・編集関連 --- */
     function openAddModal() {
         if (currentGroupId) {
-            // バーコード追加（現在入っているグループに固定）
             document.getElementById('barcodeModalTitle').innerText = '新しいバーコードを追加';
             document.getElementById('editingBarcodeId').value = '';
             document.getElementById('barcodeNameInput').value = '';
@@ -835,11 +815,10 @@
                 if (g.id === currentGroupId) opt.selected = true;
                 select.appendChild(opt);
             });
-            select.disabled = true; // グループ選択を固定
+            select.disabled = true;
 
             openSheet('barcodeModal');
         } else {
-            // グループ追加
             document.getElementById('groupModalTitle').innerText = '新しいグループを追加';
             document.getElementById('editingGroupId').value = '';
             document.getElementById('groupNameInput').value = '';
@@ -857,7 +836,6 @@
         document.getElementById('groupNameInput').value = group.title;
         document.getElementById('groupIconInput').value = group.icon;
         
-        // 色選択
         selectedColor = group.color || "#FFF7ED";
         document.querySelectorAll('.color-option').forEach(c => {
             if (c.getAttribute('data-color') === selectedColor) {
@@ -891,7 +869,7 @@
             if (g.id === currentGroupId) opt.selected = true;
             select.appendChild(opt);
         });
-        select.disabled = true; // 編集時も固定
+        select.disabled = true;
 
         openSheet('barcodeModal');
     }
@@ -903,7 +881,6 @@
         if (!title) return alert('グループ名を入力してください');
 
         if (editId) {
-            // 更新
             const group = appData.find(g => g.id === editId);
             if (group) {
                 group.title = title;
@@ -912,7 +889,6 @@
                 group.illustration = icon;
             }
         } else {
-            // 新規作成
             appData.push({ id: 'group-' + Date.now(), title, icon, color: selectedColor, illustration: icon, items: [] });
         }
 
@@ -937,7 +913,6 @@
         if (!group) return;
 
         if (editId) {
-            // 編集保存
             const item = group.items.find(i => i.id === editId);
             if (item) {
                 item.name = name;
@@ -946,7 +921,6 @@
                 item.iconImage = currentUploadedImageBase64;
             }
         } else {
-            // 新規保存
             group.items.push({ id: 'item-' + Date.now(), name, type, code, active: false, iconImage: currentUploadedImageBase64 });
         }
 
@@ -973,7 +947,6 @@
         }
     }
 
-    /* --- 画像アップロード処理 --- */
     function handleImageUpload(event) {
         const file = event.target.files[0];
         if (!file) return;
@@ -1001,7 +974,6 @@
         }
     }
 
-    /* --- ユーティリティ --- */
     function openSheet(id) {
         document.getElementById('sheetOverlay').classList.add('active');
         document.getElementById(id).classList.add('active');
@@ -1046,10 +1018,17 @@
         return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
     }
 
-    window.addEventListener('DOMContentLoaded', () => {
+    // 安全な初期化呼び出し
+    function initApp() {
         loadData();
         renderGroupsView();
-    });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initApp);
+    } else {
+        initApp();
+    }
 </script>
 </body>
 </html>
