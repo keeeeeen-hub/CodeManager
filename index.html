@@ -635,7 +635,6 @@
             `;
             container.appendChild(wrapper);
 
-            // 長押しドラッグ＆ドロップ設定
             setupLongPressDrag(wrapper, 'group', index);
         });
     }
@@ -748,7 +747,7 @@
     }
 
     /* -------------------------------------------------------------
-       強化版長押しドラッグ＆ドロップ（リアルタイムアニメーション対応）
+       長押しドラッグ＆ドロップ（リアルタイムアニメーション対応）
     ------------------------------------------------------------- */
     let dragManager = {
         timer: null,
@@ -769,7 +768,6 @@
         el.dataset.index = index;
 
         const onPointerDown = (e) => {
-            // ボタンや操作要素の上ではドラッグを開始しない
             if (e.target.closest('.card-edit-actions') || 
                 e.target.closest('.switch') || 
                 e.target.closest('.action-btn-subtle') || 
@@ -788,13 +786,13 @@
 
             dragManager.timer = setTimeout(() => {
                 startDrag(e);
-            }, 300); // 300msの長押しで発動
+            }, 300);
         };
 
         const onPointerMove = (e) => {
             if (!dragManager.isDragging) {
                 if (Math.abs(e.clientY - dragManager.startY) > 8) {
-                    clearTimeout(dragManager.timer); // 指が動いたらスクロール優先で解除
+                    clearTimeout(dragManager.timer);
                 }
                 return;
             }
