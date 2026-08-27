@@ -205,9 +205,7 @@
         .edit-badge-btn.move { color: #333; padding: 5px 8px; }
 
         .barcode-card {
-            background: #ffffff;
             border-radius: var(--border-radius);
-            padding: 20px;
             margin-bottom: 16px;
             box-shadow: var(--card-shadow);
             border: 1px solid rgba(0, 0, 0, 0.03);
@@ -216,7 +214,47 @@
             user-select: none;
             -webkit-user-select: none;
             touch-action: pan-y;
+            overflow: hidden;
             transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .barcode-card-inner {
+            background: #ffffff;
+            padding: 20px;
+            position: relative;
+            z-index: 2;
+            border-radius: var(--border-radius);
+        }
+
+        .barcode-swipe-delete-bg {
+            position: absolute;
+            top: 0; right: 0; bottom: 0;
+            width: 96px;
+            background: var(--accent-red);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1;
+        }
+
+        .swipe-delete-btn {
+            width: 100%;
+            height: 100%;
+            background: none;
+            border: none;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            cursor: pointer;
+        }
+
+        .swipe-delete-btn .icon {
+            font-size: 20px;
         }
 
         .barcode-header {
@@ -330,46 +368,6 @@
             filter: blur(12px);
             opacity: 0.2;
             user-select: none;
-        }
-
-        .barcode-display-box::after {
-            content: "🔒 非表示中";
-            position: absolute;
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%) scale(0.9);
-            font-size: 13px;
-            font-weight: 700;
-            color: #1c1c1e;
-            background: rgba(255, 255, 255, 0.92);
-            padding: 6px 14px;
-            border-radius: 20px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-            pointer-events: none;
-            opacity: 0;
-            transition: opacity 0.3s ease, transform 0.3s ease;
-            will-change: opacity, transform;
-        }
-
-        .barcode-display-box.masked::after {
-            opacity: 1;
-            transform: translate(-50%, -50%) scale(1);
-        }
-
-        .barcode-actions {
-            display: flex;
-            justify-content: flex-end;
-            margin-top: 12px;
-            padding-top: 10px;
-            border-top: 1px solid #f5f5f7;
-        }
-
-        .action-btn-subtle {
-            font-size: 13px;
-            color: var(--accent-red);
-            background: none;
-            border: none;
-            cursor: pointer;
-            padding: 4px 8px;
         }
 
         .sheet-overlay {
@@ -668,6 +666,8 @@
         const group = appData.find(g => g.id === currentGroupId);
         if (!group) return;
 
+        currentOpenSwipeInner = null; // 再描画でDOMが作り直されるため参照をリセット
+
         const container = document.getElementById('barcodesContainer');
         container.innerHTML = '';
 
@@ -696,26 +696,30 @@
             }
 
             card.innerHTML = `
-                ${editBtnsHTML}
-                <div class="barcode-header">
-                    <div class="barcode-title-area">
-                        <div class="barcode-avatar">${avatarHTML}</div>
-                        <div>
-                            <div class="barcode-name">${escapeHTML(item.name)}</div>
-                            <div class="barcode-type-tag">${item.type}</div>
+                <div class="barcode-swipe-delete-bg">
+                    <button class="swipe-delete-btn" onclick="event.stopPropagation(); deleteBarcode('${item.id}')">
+                        <span class="icon">🗑</span>削除
+                    </button>
+                </div>
+                <div class="barcode-card-inner">
+                    ${editBtnsHTML}
+                    <div class="barcode-header">
+                        <div class="barcode-title-area">
+                            <div class="barcode-avatar">${avatarHTML}</div>
+                            <div>
+                                <div class="barcode-name">${escapeHTML(item.name)}</div>
+                                <div class="barcode-type-tag">${item.type}</div>
+                            </div>
                         </div>
+                        <label class="switch" title="ぼかし非表示の切り替え" onclick="event.stopPropagation();">
+                            <input type="checkbox" ${item.active ? 'checked' : ''} onchange="toggleMask('${item.id}', this.checked)">
+                            <span class="slider"></span>
+                        </label>
                     </div>
-                    <label class="switch" title="ぼかし非表示の切り替え" onclick="event.stopPropagation();">
-                        <input type="checkbox" ${item.active ? 'checked' : ''} onchange="toggleMask('${item.id}', this.checked)">
-                        <span class="slider"></span>
-                    </label>
-                </div>
-                <div id="${displayBoxId}" class="barcode-display-box ${item.active ? 'masked' : ''}" onclick="openEditBarcodeModal('${item.id}')">
-                    <div id="${targetId}"></div>
-                    <div class="barcode-val-text">${escapeHTML(item.code)}</div>
-                </div>
-                <div class="barcode-actions">
-                    <button class="action-btn-subtle" onclick="deleteBarcode('${item.id}')">削除</button>
+                    <div id="${displayBoxId}" class="barcode-display-box ${item.active ? '' : 'masked'}" onclick="handleDisplayBoxClick(event, '${item.id}')">
+                        <div id="${targetId}"></div>
+                        <div class="barcode-val-text">${escapeHTML(item.code)}</div>
+                    </div>
                 </div>
             `;
             container.appendChild(card);
@@ -762,6 +766,41 @@
     let dragSiblings = [];   // ドラッグ中に一緒にシフトさせる他のカード
     let dragItemStep = 0;    // カード1枚分の移動量（高さ＋余白）
 
+    // --- 横スワイプで削除（バーコードカードのみ） ---
+    let swipeInnerEl = null;
+    let swipeStartX = 0;
+    let swipeAxisLocked = null;   // 'horizontal' | 'vertical' | null
+    let isHorizontalSwiping = false;
+    let lastSwipeDeltaX = 0;
+    let currentOpenSwipeInner = null; // 現在開いている（削除ボタンが見えている）カード
+    const SWIPE_REVEAL_WIDTH = 96;
+    const SWIPE_OPEN_THRESHOLD = 40;
+
+    function closeOpenSwipe() {
+        if (currentOpenSwipeInner) {
+            currentOpenSwipeInner.style.transition = 'transform 0.22s cubic-bezier(0.22, 0.9, 0.25, 1)';
+            currentOpenSwipeInner.style.transform = 'translateX(0)';
+            currentOpenSwipeInner = null;
+        }
+    }
+
+    // タップ位置がどのバーコードカードにも含まれない場合、開いているスワイプを閉じる
+    document.addEventListener('click', (e) => {
+        if (currentOpenSwipeInner && !e.target.closest('.barcode-card')) {
+            closeOpenSwipe();
+        }
+    }, true);
+
+    // バーコード表示部タップ時：スワイプが開いていれば閉じるだけ、そうでなければ編集画面を開く
+    function handleDisplayBoxClick(event, itemId) {
+        const inner = event.currentTarget.closest('.barcode-card-inner');
+        if (inner && currentOpenSwipeInner === inner) {
+            closeOpenSwipe();
+            return;
+        }
+        openEditBarcodeModal(itemId);
+    }
+
     function setupDragAndDropEvents(el, type) {
         // --- PC マウスドラッグ ---
         el.addEventListener('dragstart', (e) => {
@@ -784,7 +823,7 @@
 
         // --- スマホ 長押しタッチドラッグ ---
         el.addEventListener('touchstart', (e) => {
-            if (e.target.closest('.card-edit-actions') || e.target.closest('.switch') || e.target.closest('.action-btn-subtle') || e.target.closest('input') || e.target.closest('button')) {
+            if (e.target.closest('.card-edit-actions') || e.target.closest('.switch') || e.target.closest('.swipe-delete-btn') || e.target.closest('input') || e.target.closest('button')) {
                 return;
             }
 
@@ -792,6 +831,19 @@
             touchStartY = touch.clientY;
             dragStartIndex = parseInt(el.dataset.index);
             currentHoverIndex = dragStartIndex;
+
+            if (type === 'barcode') {
+                swipeInnerEl = el.querySelector('.barcode-card-inner');
+                swipeStartX = touch.clientX;
+                swipeAxisLocked = null;
+                isHorizontalSwiping = false;
+                lastSwipeDeltaX = 0;
+
+                // 他のカードでスワイプが開いていれば閉じる
+                if (currentOpenSwipeInner && currentOpenSwipeInner !== swipeInnerEl) {
+                    closeOpenSwipe();
+                }
+            }
 
             touchTimer = setTimeout(() => {
                 isTouchDragging = true;
@@ -819,6 +871,29 @@
 
         el.addEventListener('touchmove', (e) => {
             const touch = e.touches[0];
+
+            // --- 横スワイプ判定（バーコードカードのみ） ---
+            if (type === 'barcode' && !isTouchDragging) {
+                const dx = touch.clientX - swipeStartX;
+                const dy = touch.clientY - touchStartY;
+
+                if (swipeAxisLocked === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+                    swipeAxisLocked = (Math.abs(dx) > Math.abs(dy) * 1.2) ? 'horizontal' : 'vertical';
+                    if (swipeAxisLocked === 'horizontal') {
+                        clearTimeout(touchTimer); // 横スワイプ優先。並べ替え長押しはキャンセル
+                        isHorizontalSwiping = true;
+                    }
+                }
+
+                if (isHorizontalSwiping && swipeInnerEl) {
+                    if (e.cancelable) e.preventDefault();
+                    const clamped = Math.min(0, Math.max(dx, -(SWIPE_REVEAL_WIDTH + 24)));
+                    lastSwipeDeltaX = clamped;
+                    swipeInnerEl.style.transition = 'none';
+                    swipeInnerEl.style.transform = `translateX(${clamped}px)`;
+                    return; // 横スワイプ中は縦の並べ替え処理をスキップ
+                }
+            }
 
             if (!isTouchDragging) {
                 if (Math.abs(touch.clientY - touchStartY) > 12) {
@@ -868,6 +943,31 @@
 
         const handleTouchEnd = () => {
             clearTimeout(touchTimer);
+
+            // --- 横スワイプの確定処理 ---
+            if (type === 'barcode' && isHorizontalSwiping && swipeInnerEl) {
+                const finalInner = swipeInnerEl;
+                const shouldOpen = lastSwipeDeltaX <= -SWIPE_OPEN_THRESHOLD;
+
+                finalInner.style.transition = 'transform 0.22s cubic-bezier(0.22, 0.9, 0.25, 1)';
+                finalInner.style.transform = shouldOpen ? `translateX(-${SWIPE_REVEAL_WIDTH}px)` : 'translateX(0)';
+                currentOpenSwipeInner = shouldOpen ? finalInner : null;
+
+                isHorizontalSwiping = false;
+                swipeAxisLocked = null;
+                swipeInnerEl = null;
+                lastSwipeDeltaX = 0;
+
+                // 縦の並べ替え状態も念のためリセット
+                isTouchDragging = false;
+                activeDragEl = null;
+                activeDragType = null;
+                dragStartIndex = -1;
+                currentHoverIndex = -1;
+                dragSiblings = [];
+                return;
+            }
+
             if (isTouchDragging && activeDragEl) {
                 const finalType = activeDragType;
                 const finalStart = dragStartIndex;
@@ -1117,9 +1217,9 @@
             const displayBox = document.getElementById(`display-box-${itemId}`);
             if (displayBox) {
                 if (isChecked) {
-                    displayBox.classList.add('masked');
-                } else {
                     displayBox.classList.remove('masked');
+                } else {
+                    displayBox.classList.add('masked');
                 }
             }
         }
